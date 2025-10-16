@@ -57,21 +57,11 @@ Create/Select Key Pair
 
 That’s 8+ steps with dozens of options! Tomorrow, we’ll do this with just a few lines of code.
 
-### Step 5: Reflection Questions Think about these (write down your answers):
 
-How would you recreate this exact setup in another region?
-
-How would you document all the settings you chose?
-
-How would you track who made what changes?
-
-How would you share this setup with your team?
-
-These questions highlight why IaC is essential!
 
 📚 Summary
 
-Today you learned:
+Today I learned:
 
 ✅ What Infrastructure as Code is and why it matters
 
