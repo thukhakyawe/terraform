@@ -1,3 +1,5 @@
+# Day 2: Installing Terraform & Your First Configuration
+
 🧪 Hands-On Lab: Create Your First S3 Bucket
 
 Let’s create infrastructure! Follow these steps carefully.
