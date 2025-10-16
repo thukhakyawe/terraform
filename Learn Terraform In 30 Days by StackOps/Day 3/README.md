@@ -151,7 +151,7 @@ terraform apply
 
 ![alt text](image-2.png)
 
-Step 7: Verify in AWS Console
+### Step 7: Verify in AWS Console
 
 Go to VPC Dashboard
 
@@ -174,7 +174,7 @@ terraform graph
 ```
 ![alt text](image-3.png)
 
-Step 9: Inspect Specific Resources
+### Step 9: Inspect Specific Resources
 
 # Show all resources
 ```
