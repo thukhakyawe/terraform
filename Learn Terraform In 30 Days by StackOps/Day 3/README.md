@@ -452,3 +452,5 @@ resource "aws_security_group" "database" {
 ```
 
 ![alt text](image-5.png)
+
+This lab was built using [StackOps - Diary](https://stackopsdiary.site/day-3-understanding-providers-and-aws-setup).
