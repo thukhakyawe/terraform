@@ -956,3 +956,5 @@ terraform destroy -auto-approve
 Please delete S3 by manual
 
 ![alt text](image-19.png)
+
+This lab was built using [StackOps - Diary](https://stackopsdiary.site/day-6-state-management-fundamentals).
