@@ -793,7 +793,7 @@ terraform apply
 # Step 6 :After it completes, verify:
 ```
 ls -la datacenter-kp.pem
-terraform output challenge_requirements
+terraform output challenge_requirementsa
 ```
 
 
