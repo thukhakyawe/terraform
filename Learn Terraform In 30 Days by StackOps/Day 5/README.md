@@ -798,3 +798,5 @@ terraform output challenge_requirements
 
 
 ![alt text](image-8.png)
+
+This lab was built using [StackOps - Diary](https://stackopsdiary.site/day-5-resource-dependencies-and-data-sources).
