@@ -586,3 +586,5 @@ Today I learned:
 ✅ Locals vs variables
 
 ✅ Organizing complex configurations
+
+This lab was built using [StackOps - Diary](https://stackopsdiary.site/day-10-output-values-and-local-values).
