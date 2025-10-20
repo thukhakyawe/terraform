@@ -609,7 +609,7 @@ subnet_az_mapping = {
 }
 ```
 
-`instance_deployments` - MOST COMPLEX BUT MOST IMPORTANT
+`instance_deployments` - **MOST COMPLEX BUT MOST IMPORTANT**
 ```
 instance_deployments = flatten([
   for tier, config in var.instance_configs : [
@@ -626,27 +626,27 @@ instance_deployments = flatten([
 
 Let's trace through this step by step:
 
-First loop: for tier, config in var.instance_configs
+First loop: `for tier, config in var.instance_configs`
 
-Tier: "web", Config: {instance_type: "t2.micro", count: 2, user_data: "..."}
+Tier: `"web"`, Config: `{instance_type: "t2.micro", count: 2, user_data: "..."}`
 
-Tier: "app", Config: {instance_type: "t2.small", count: 2, user_data: "..."}
+Tier: `"app"`, Config: `{instance_type: "t2.small", count: 2, user_data: "..."}`
 
-Second loop: for i in range(config.count)
+Second loop: `for i in range(config.count)`
 
-For web: i = 0 and i = 1 (because count = 2)
+For web: `i = 0` and `i = 1` **(because count = 2)**
 
-For app: i = 0 and i = 1 (because count = 2)
+For app: `i = 0` and `i = 1` **(because count = 2)**
 
-Subnet assignment logic: local.subnets_by_tier[tier][i % length(local.subnets_by_tier[tier])].name
+`Subnet assignment logic: local.subnets_by_tier[tier][i % length(local.subnets_by_tier[tier])].name`
 
-For web tier: local.subnets_by_tier["web"] has 2 subnets
+For web tier: `local.subnets_by_tier["web"]` has 2 subnets
 
-i % length(...) = i % 2 → cycles through 0, 1
+`i % length(...)` = `i % 2` → **cycles through 0, 1**
 
-So: web instance 0 gets subnet at index 0 (web-1)
+So: web instance **0** gets subnet at index **0** (`web-1`)
 
-web instance 1 gets subnet at index 1 (web-2)
+web instance **1** gets subnet at index **1** (`web-2`)
 
 Result after flatten:
 ```
