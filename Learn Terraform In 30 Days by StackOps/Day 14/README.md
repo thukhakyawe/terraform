@@ -218,3 +218,7 @@ terraform destroy -auto-approve
 🧠 What I Learned
 
 ![alt text](image-3.png)
+
+This lab was built using [StackOps - Diary](https://stackopsdiary.site/day-14-built-in-functions-in-terraform-part-i).
+
+***
