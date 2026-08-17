@@ -55,3 +55,19 @@ output "ec2_instance_profile_name" {
   description = "EC2 instance profile name."
   value       = module.iam.ec2_instance_profile_name
 }
+
+# Add ALB outputs to dev
+output "alb_dns_name" {
+  description = "DNS name of the application load balancer."
+  value       = module.alb.alb_dns_name
+}
+
+output "alb_arn" {
+  description = "ARN of the application load balancer."
+  value       = module.alb.alb_arn
+}
+
+output "target_group_arn" {
+  description = "ARN of the application target group."
+  value       = module.alb.target_group_arn
+}
