@@ -23,3 +23,30 @@ module "networking" {
     Environment = var.environment
   }
 }
+
+module "security" {
+  source = "../../modules/security"
+
+  name = "${var.project_name}-${var.environment}"
+
+  vpc_id = module.networking.vpc_id
+
+  app_port = 8080
+  db_port  = 5432
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+
+# Connect IAM to Dev
+module "iam" {
+  source = "../../modules/iam"
+
+  name = "${var.project_name}-${var.environment}"
+
+  tags = {
+    Environment = var.environment
+  }
+}
