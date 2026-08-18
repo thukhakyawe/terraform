@@ -30,6 +30,11 @@ resource "aws_launch_template" "app" {
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
 
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
   iam_instance_profile {
     name = var.instance_profile_name
   }

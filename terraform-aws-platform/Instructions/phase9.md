@@ -442,6 +442,7 @@ For now, your goal is:
 [ ] Trivy IaC scan
 [ ] Commit pushed
 [ ] GitHub Actions workflow visible
+
 Do this first
 
 Run:
@@ -456,6 +457,656 @@ git push
 
 Go to GitHub → Actions and tell me what happens.
 
-If it fails at Terraform Init with an AWS credential/backend error, that's expected at this point. 
+If it fails at Terraform Init with an AWS credential/backend error, that's expected at this point. Github action will fails.
+Trivy is doing exactly what we wanted: it found 11 IaC security findings, including 4 critical/high-priority areas. The log confirms it scanned the correct terraform-aws-platform project, including environments/dev and all of your modules.
+
+
+We should fix the Terraform security findings, not simply disable Trivy.
+
+Phase 9 — Step 1: Fix the Trivy findings
+
+Here is the order I recommend.
+
+| Finding                       | Severity | Fix                                   |
+| ----------------------------- | -------- | ------------------------------------- |
+| S3 state bucket not using KMS | HIGH     | Add SSE-KMS                           |
+| ALB invalid headers           | HIGH     | `drop_invalid_header_fields = true`   |
+| Internet-facing ALB           | HIGH     | Intentional architecture; keep public |
+| ALB HTTP listener             | CRITICAL | Add HTTPS/TLS                         |
+| EC2 IMDSv2                    | HIGH     | Require IMDSv2                        |
+| SNS encryption                | HIGH     | Add KMS encryption                    |
+| Public subnet public IP       | HIGH     | Set `map_public_ip_on_launch = false` |
+| ALB unrestricted egress       | CRITICAL | Restrict to app SG                    |
+| App unrestricted egress       | CRITICAL | Restrict appropriately                |
+| DB unrestricted egress        | CRITICAL | Remove unrestricted egress            |
+
+
+The log confirms these findings individually.
+
+1. Fix S3 Terraform state encryption
+
+Your current configuration uses:
+
+sse_algorithm = "AES256"
+
+Trivy wants customer-managed KMS encryption. The finding points directly to bootstrap/state/main.tf.
+
+Add a KMS key in:
+
+terraform-aws-platform/bootstrap/state/main.tf
+
+
+
+resource "aws_kms_key" "terraform_state" {
+  description             = "KMS key for Terraform state encryption"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+
+
+  tags = {
+    Name        = "${var.name}-terraform-state-kms"
+    Environment = var.environment
+  }
+}
+
+Then change the S3 encryption configuration to:
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.terraform_state.arn
+    }
+
+
+    bucket_key_enabled = true
+  }
+}
+
+Don't apply this yet. We are still making the code changes.
+
+2. Fix ALB invalid headers
+
+In:
+
+modules/alb/main.tf
+
+Your ALB currently has:
+
+resource "aws_lb" "this" {
+  name               = "${var.name}-alb"
+  internal           = false
+  load_balancer_type = "application"
+
+Add:
+
+  drop_invalid_header_fields = true
+
+So:
+
+resource "aws_lb" "this" {
+  name                       = "${var.name}-alb"
+  internal                   = false
+  load_balancer_type         = "application"
+  drop_invalid_header_fields = true
+
+
+  security_groups = [
+    var.security_group_id
+  ]
+
+
+  subnets = var.public_subnet_ids
+
+
+  tags = var.tags
+}
+
+This directly addresses AWS-0052.
+
+3. Keep the ALB public
+
+This finding is important:
+
+AWS-0053 (HIGH): Load balancer is exposed publicly.
+
+Your architecture intentionally has:
+
+internal = false
+
+because this is an internet-facing application platform.
+
+Do not change this to internal = true.
+
+An enterprise web platform normally has:
+
+Internet
+   ↓
+Internet-facing ALB
+   ↓
+Private App Subnets
+   ↓
+Private DB Subnets
+
+That's exactly the architecture we're building.
+
+The security improvement is to make the ALB use HTTPS, not to hide the ALB.
+
+4. Fix the CRITICAL HTTP listener
+
+This is the most important finding:
+
+AWS-0054 (CRITICAL):
+Listener for application load balancer does not use HTTPS.
+
+Your current listener is:
+
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.this.arn
+  port              = 80
+  protocol          = "HTTP"
+
+Trivy correctly flags this because traffic is unencrypted.
+
+For the enterprise version, we'll change the architecture to:
+
+                    HTTPS :443
+Internet ─────────────────────────► ALB
+                                      │
+                                      │ HTTP :8080
+                                      ▼
+                                Private App
+
+We will need:
+
+ACM certificate
+HTTPS listener on 443
+certificate ARN variable
+optionally HTTP → HTTPS redirect
+
+I recommend we do this as the next dedicated step rather than trying to improvise it now.
+
+5. Enable IMDSv2
+
+In:
+
+modules/compute/main.tf
+
+Your launch template currently doesn't require IMDSv2. Trivy identifies the launch template at lines 28–115.
+
+Inside:
+
+resource "aws_launch_template" "app" {
+
+add:
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+For example:
+
+resource "aws_launch_template" "app" {
+  name_prefix   = "${var.name}-app-"
+  image_id      = data.aws_ami.amazon_linux.id
+  instance_type = var.instance_type
+
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+
+  iam_instance_profile {
+    name = var.instance_profile_name
+  }
+
+
+  # ...
+}
+
+This is an excellent enterprise/SRE security practice.
+
+6. Encrypt SNS
+
+Trivy found:
+
+AWS-0095 (HIGH): Topic does not have encryption enabled.
+
+In:
+
+modules/monitoring/main.tf
+
+Your current SNS resource is:
+
+resource "aws_sns_topic" "alerts" {
+  name = "${var.name}-alerts"
+
+We'll add a KMS key and:
+
+kms_master_key_id = aws_kms_key.monitoring.arn
+
+
+For example:
+
+resource "aws_sns_topic" "alerts" {
+  name = "${var.name}-alerts"
+
+  kms_master_key_id = aws_kms_key.monitoring.arn
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.name}-alerts"
+    }
+  )
+}
+
+This gives the monitoring platform encrypted SNS messages.
+
+7. Remove public IP assignment from public subnets
+
+Trivy flags:
+
+map_public_ip_on_launch = true
+
+for both public subnets.
+
+In:
+
+modules/networking/main.tf
+
+Your current resource is:
+
+Change:
+
+map_public_ip_on_launch = true
+
+to:
+
+map_public_ip_on_launch = false
+
+This is actually a good improvement for our architecture.
+
+The subnet can still be a public subnet because its route table has:
+
+0.0.0.0/0 → Internet Gateway
+
+Public subnet does not mean every resource inside it must automatically receive a public IP.
+
+Our ALB can still be internet-facing.
+
+8. Fix the three CRITICAL security-group egress findings
+
+This is the most important networking cleanup.
+
+Trivy found three instances of:
+
+cidr_blocks = ["0.0.0.0/0"]
+
+in the security module.
+
+Currently you effectively have:
+
+ALB SG
+   └── unrestricted egress → Internet
+
+
+App SG
+   └── unrestricted egress → Internet
+
+
+DB SG
+   └── unrestricted egress → Internet
+
+We want:
+
+Internet
+    │
+    ▼
+  ALB SG
+    │
+    │ 8080
+    ▼
+  App SG
+    │
+    │ 5432
+    ▼
+  DB SG
+
+And outbound access should be deliberately controlled.
+
+ALB
+
+ALB should be able to reach the application:
+
+egress {
+  from_port       = 8080
+  to_port         = 8080
+  protocol        = "tcp"
+  security_groups = [aws_security_group.app.id]
+}
+App
+
+The application needs:
+
+App → DB :5432
+
+and potentially:
+
+App → Internet :443
+
+through the NAT Gateway for package/API access.
+
+DB
+
+The database does not need unrestricted Internet egress.
+
+So we'll remove:
+
+cidr_blocks = ["0.0.0.0/0"]
+
+from the DB egress rule.
+
+Inside 
+
+modules/security/main.tf
+
+You currently have three rules similar to:
+
+egress {
+  description = "Allow outbound traffic"
+
+
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+
+
+  cidr_blocks = ["0.0.0.0/0"]
+}
+
+These are what Trivy is complaining about. Your plan confirms all three security groups currently have unrestricted IPv4 egress.
+
+1. Fix the ALB security group
+
+Find:
+
+resource "aws_security_group" "alb" {
+
+Your current ALB egress is effectively:
+
+egress {
+  description = "Allow outbound traffic"
+
+
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+
+
+  cidr_blocks = ["0.0.0.0/0"]
+}
+
+Replace it with:
+
+egress {
+  description     = "Allow ALB traffic to application workloads"
+
+
+  from_port       = 8080
+  to_port         = 8080
+  protocol        = "tcp"
+
+
+  security_groups = [aws_security_group.app.id]
+}
+
+This changes the ALB from:
+
+ALB → anywhere
+
+to:
+
+ALB → app-sg:8080
+
+This is exactly what we want.
+
+The application SG already accepts traffic on port 8080 from the ALB security group.
+
+3. Fix the application security group
+
+Find:
+
+resource "aws_security_group" "app" {
+
+Remove:
+
+egress {
+  description = "Allow outbound traffic"
+
+
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+
+
+  cidr_blocks = ["0.0.0.0/0"]
+}
+
+Replace it with:
+
+egress {
+  description     = "Allow application traffic to PostgreSQL"
+
+
+  from_port       = 5432
+  to_port         = 5432
+  protocol        = "tcp"
+
+
+  security_groups = [aws_security_group.db.id]
+}
+
+Now:
+
+Application
+     │
+     │ TCP 5432
+     ▼
+ PostgreSQL
+
+instead of:
+
+Application
+     │
+     └──────────► Internet / anywhere
+
+Your DB ingress is already designed for exactly this relationship: PostgreSQL 5432 from the application security group.
+
+4. Fix the database security group
+
+This one is slightly different.
+
+Your database should not need unrestricted outbound internet access.
+
+Find:
+
+resource "aws_security_group" "db" {
+
+Remove:
+
+egress {
+  description = "Allow outbound traffic"
+
+
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+
+
+  cidr_blocks = ["0.0.0.0/0"]
+}
+
+And explicitly set:
+
+egress = []
+
+So the DB security group becomes conceptually:
+
+Inbound:
+app-sg ──TCP 5432──► db-sg
+
+
+Outbound:
+nothing
+
+That's a strong least-privilege design for this project.
+
+5. Your resulting security groups
+
+Your modules/security/main.tf should now have approximately this structure:
+
+resource "aws_security_group" "alb" {
+  name        = "${var.name}-alb-sg"
+  description = "Security group for the application load balancer."
+  vpc_id      = var.vpc_id
+
+
+  ingress {
+    description = "HTTP from the internet"
+
+
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+
+
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+
+  ingress {
+    description = "HTTPS from the internet"
+
+
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+
+
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+
+  egress {
+    description     = "Allow ALB traffic to application workloads"
+
+
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+
+
+    security_groups = [aws_security_group.app.id]
+  }
+
+
+  tags = {
+    Name        = "${var.name}-alb-sg"
+    Environment = var.environment
+    Tier        = "public"
+  }
+}
+
+
+
+
+resource "aws_security_group" "app" {
+  name        = "${var.name}-app-sg"
+  description = "Security group for application workloads."
+  vpc_id      = var.vpc_id
+
+
+  ingress {
+    description     = "Application traffic from ALB"
+
+
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+
+
+    security_groups = [aws_security_group.alb.id]
+  }
+
+
+  egress {
+    description     = "Allow application traffic to PostgreSQL"
+
+
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+
+
+    security_groups = [aws_security_group.db.id]
+  }
+
+
+  tags = {
+    Name        = "${var.name}-app-sg"
+    Environment = var.environment
+    Tier        = "private-app"
+  }
+}
+
+
+
+
+resource "aws_security_group" "db" {
+  name        = "${var.name}-db-sg"
+  description = "Security group for database workloads."
+  vpc_id      = var.vpc_id
+
+
+  ingress {
+    description     = "PostgreSQL from application workloads"
+
+
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+
+
+    security_groups = [aws_security_group.app.id]
+  }
+
+
+  egress = []
+
+
+  tags = {
+    Name        = "${var.name}-db-sg"
+    Environment = var.environment
+    Tier        = "private-db"
+  }
+}
+
+Important
+
+Do not remove the ALB ingress:
+
+cidr_blocks = ["0.0.0.0/0"]
+
+from ports 80/443.
+
+That's ingress, not egress, and your ALB is intentionally internet-facing. Trivy has separately reported that the ALB is public as a HIGH finding, but that is an architectural choice we will address separately.
+
 
 Then we'll continue with Phase 9B: AWS IAM + GitHub OIDC, where we'll configure secure passwordless authentication between GitHub Actions and AWS.

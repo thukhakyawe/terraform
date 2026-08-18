@@ -22,12 +22,16 @@ resource "aws_security_group" "alb" {
   }
 
   egress {
-    description = "Allow outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  description     = "Allow ALB traffic to application workloads"
+
+
+  from_port       = 8080
+  to_port         = 8080
+  protocol        = "tcp"
+
+
+  security_groups = [aws_security_group.app.id]
+}
 
   tags = merge(
     var.tags,
@@ -55,12 +59,16 @@ resource "aws_security_group" "app" {
   }
 
   egress {
-    description = "Allow outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  description     = "Allow application traffic to PostgreSQL"
+
+
+  from_port       = 5432
+  to_port         = 5432
+  protocol        = "tcp"
+
+
+  security_groups = [aws_security_group.db.id]
+}
 
   tags = merge(
     var.tags,
@@ -86,13 +94,7 @@ resource "aws_security_group" "db" {
     security_groups = [aws_security_group.app.id]
   }
 
-  egress {
-    description = "Allow outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  egress =[]
 
   tags = merge(
     var.tags,
