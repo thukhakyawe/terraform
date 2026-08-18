@@ -1,8 +1,9 @@
 # Create the Application Load Balancer
+
 resource "aws_lb" "this" {
-  name               = "${var.name}-alb"
-  internal           = false
-  load_balancer_type = "application"
+  name                       = "${var.name}-alb"
+  internal                   = false
+  load_balancer_type         = "application"
   drop_invalid_header_fields = true
 
   security_groups = [
@@ -24,6 +25,7 @@ resource "aws_lb" "this" {
 
 
 # Create the target group
+
 resource "aws_lb_target_group" "app" {
   name        = "${var.name}-tg"
   port        = var.target_port
@@ -53,7 +55,9 @@ resource "aws_lb_target_group" "app" {
   )
 }
 
+
 # Create the ALB listener
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
