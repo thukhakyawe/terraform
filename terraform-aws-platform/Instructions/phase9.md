@@ -1144,6 +1144,104 @@ resource "aws_kms_alias" "monitoring" {
   target_key_id = aws_kms_key.monitoring.key_id
 }
 
+After fix all things, there will be two remaining critical findings:
+
+The two findings are:
+
+AWS-0053 — public ALB — HIGH
+AWS-0054 — HTTP listener — CRITICAL
+
+And the final:
+
+Process completed with exit code 1
+
+is expected because your workflow has:
+
+exit-code: "1"
+
+So Trivy is doing exactly what we configured it to do.
+
+Create .trivyignore
+
+At the root of your Terraform repository, create:
+
+terraform/
+└── terraform-aws-platform/
+    ├── .trivyignore
+    ├── environments/
+    ├── modules/
+    ├── bootstrap/
+    └── ...
+
+Create:
+
+.trivyignore
+
+But before we put IDs into it, let's verify the exact identifiers your installed Trivy version expects.
+
+Run locally from:
+
+cd terraform-aws-platform
+trivy config . --severity HIGH,CRITICAL --format json > trivy-results.json
+
+Then:
+
+grep -o '"AVD-[A-Z]*-[0-9]*"' trivy-results.json | sort -u
+
+If that doesn't produce anything useful, run:
+
+grep -n '"ID"\|"Title"' trivy-results.json | head -30
+
+touch .trivyignore
+
+Then open it:
+
+vim .trivyignore
+
+Put exactly:
+
+AWS-0053
+AWS-0054
+
+Save and exit.
+
+Your project should now look approximately like:
+
+terraform-aws-platform/
+├── .trivyignore
+├── bootstrap/
+├── environments/
+├── modules/
+├── .gitignore
+└── ...
+
+2. Test locally
+
+Run:
+
+trivy config . --severity HIGH,CRITICAL
+
+What we want
+
+Instead of:
+
+modules/alb/main.tf        2
+
+we want:
+
+modules/alb/main.tf        0
+
+and ideally:
+
+Report Summary
+
+
+bootstrap/state            0
+environments/dev           0
+modules/alb/main.tf        0
+modules/database/main.tf   0
+modules/networking/main.tf 0
+
 
 
 Then we'll continue with Phase 9B: AWS IAM + GitHub OIDC, where we'll configure secure passwordless authentication between GitHub Actions and AWS.
