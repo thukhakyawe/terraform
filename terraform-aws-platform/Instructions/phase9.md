@@ -348,7 +348,10 @@ that we want on your resume.
 
 Run:
 
-terraform fmt -recursive
+cd terraform-aws-platform/environments/dev
+terraform fmt -check -recursive
+terraform init
+terraform validate
 
 Then inspect:
 
@@ -357,7 +360,9 @@ git status
 You should see your workflow:
 
 ?? .github/workflows/terraform-ci.yml
-9.10 Commit the first CI version
+
+
+9.11 Commit the first CI version
 
 Before pushing, inspect:
 
@@ -365,9 +370,11 @@ git diff -- .github/workflows/terraform-ci.yml
 
 Then:
 
+cd ../../../
 git add .github/workflows/terraform-ci.yml
 git commit -m "ci: add terraform validation pipeline"
 git push
+
 9.11 Go to GitHub
 
 Open your repository:
