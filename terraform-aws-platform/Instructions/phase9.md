@@ -267,6 +267,7 @@ We'll use Trivy to scan the Terraform configuration for security problems.
         with:
           scan-type: config
           scan-ref: ./terraform-aws-platform
+          trivyignores: ./terraform-aws-platform/.trivyignore
           severity: HIGH,CRITICAL
           exit-code: "1"
 
@@ -320,6 +321,7 @@ jobs:
         with:
           scan-type: config
           scan-ref: ./terraform-aws-platform
+          trivyignores: ./terraform-aws-platform/.trivyignore
           severity: HIGH,CRITICAL
           exit-code: "1"
 
