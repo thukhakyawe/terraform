@@ -108,3 +108,14 @@ output "db_secret_arn" {
   description = "ARN of the database credentials secret."
   value       = module.database.secret_arn
 }
+
+# Add development outputs
+output "monitoring_sns_topic_arn" {
+  description = "SNS topic ARN for platform alerts."
+  value       = module.monitoring.sns_topic_arn
+}
+
+output "monitoring_dashboard_name" {
+  description = "CloudWatch dashboard name."
+  value       = module.monitoring.dashboard_name
+}

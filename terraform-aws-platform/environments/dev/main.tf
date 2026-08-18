@@ -129,3 +129,25 @@ module "database" {
     Environment = var.environment
   }
 }
+
+# Connect monitoring to dev
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  name        = "${var.project_name}-${var.environment}"
+  environment = var.environment
+
+  alb_arn_suffix = module.alb.alb_arn_suffix
+
+  target_group_arn_suffix = module.alb.target_group_arn_suffix
+
+  autoscaling_group_name = module.compute.autoscaling_group_name
+
+  db_instance_identifier = module.database.db_instance_id
+
+  alarm_email = ""
+
+  tags = {
+    Environment = var.environment
+  }
+}
