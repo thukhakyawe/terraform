@@ -1244,6 +1244,591 @@ modules/alb/main.tf        0
 modules/database/main.tf   0
 modules/networking/main.tf 0
 
+and git push the changes.
 
 
 Then we'll continue with Phase 9B: AWS IAM + GitHub OIDC, where we'll configure secure passwordless authentication between GitHub Actions and AWS.
+
+Based on the Phase 9 plan we were following, Phase 9B is the AWS/GitHub Actions authentication part: GitHub Actions → AWS using OIDC, rather than storing a long-lived AWS access key in GitHub Secrets.
+
+The architecture we want is:
+
+GitHub Actions
+      │
+      │ OIDC token
+      ▼
+AWS IAM OIDC Provider
+      │
+      ▼
+IAM Role
+      │
+      ▼
+AWS permissions
+
+
+
+This is important because eventually your pipeline can do:
+
+terraform fmt
+      ↓
+terraform init
+      ↓
+terraform validate
+      ↓
+Trivy
+      ↓
+terraform plan
+      ↓
+terraform apply
+
+without putting:
+
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+
+into GitHub.
+
+terraform-aws-platform/
+├── bootstrap/
+│   └── state/
+│
+├── environments/
+│   ├── dev/
+│   ├── stage/
+│   └── prod/
+│
+├── modules/
+│   ├── alb/
+│   ├── compute/
+│   ├── database/
+│   ├── iam/
+│   ├── monitoring/
+│   ├── networking/
+│   └── security/
+│
+└── ...
+
+
+Phase 9B — Step 1: Parameterize dev
+
+Let's do this carefully.
+
+1. Add environment-specific variables
+
+Open:
+
+vim terraform-aws-platform/environments/dev/variables.tf
+
+Keep your existing variables, and add these at the bottom:
+
+variable "app_port" {
+  description = "Port used by the application."
+  type        = number
+  default     = 8080
+}
+
+
+variable "db_port" {
+  description = "PostgreSQL database port."
+  type        = number
+  default     = 5432
+}
+
+
+variable "instance_type" {
+  description = "EC2 instance type for the application."
+  type        = string
+  default     = "t3.micro"
+}
+
+
+variable "min_size" {
+  description = "Minimum number of application instances."
+  type        = number
+  default     = 2
+}
+
+
+variable "desired_size" {
+  description = "Desired number of application instances."
+  type        = number
+  default     = 2
+}
+
+
+variable "max_size" {
+  description = "Maximum number of application instances."
+  type        = number
+  default     = 4
+}
+
+
+variable "db_instance_class" {
+  description = "RDS instance class."
+  type        = string
+  default     = "db.t3.micro"
+}
+
+
+variable "db_allocated_storage" {
+  description = "Allocated RDS storage in GB."
+  type        = number
+  default     = 20
+}
+
+
+variable "db_backup_retention_period" {
+  description = "RDS backup retention period in days."
+  type        = number
+  default     = 7
+}
+
+
+variable "db_multi_az" {
+  description = "Whether RDS should use Multi-AZ."
+  type        = bool
+  default     = false
+}
+
+
+variable "db_deletion_protection" {
+  description = "Whether deletion protection is enabled for RDS."
+  type        = bool
+  default     = false
+}
+
+Why?
+
+Now dev, stage, and prod can have different values without changing the modules.
+
+For example:
+
+| Setting             |           dev |         stage |           prod |
+| ------------------- | ------------: | ------------: | -------------: |
+| EC2                 |    `t3.micro` |    `t3.small` |    `t3.medium` |
+| desired instances   |             2 |             2 |              3 |
+| max instances       |             4 |             4 |              6 |
+| RDS                 | `db.t3.micro` | `db.t3.small` | `db.t3.medium` |
+| backups             |        7 days |        7 days |        30 days |
+| Multi-AZ            |         false |          true |           true |
+| deletion protection |         false |          true |           true |
+
+Those are examples for the architecture; we don't need to deploy those values yet.
+
+
+2. Security module
+
+Now change the hardcoded values.
+
+Security module
+
+Change: modules/security/main.tf
+
+Here we should use the module variables consistently.
+
+You currently have:
+
+resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
+  security_group_id = aws_security_group.alb.id
+
+
+  description                  = "Allow ALB traffic to application workloads"
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.app.id
+}
+
+Change only this:
+
+from_port = 8080
+to_port   = 8080
+
+to:
+
+from_port = var.app_port
+to_port   = var.app_port
+
+So it becomes:
+
+resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
+  security_group_id = aws_security_group.alb.id
+
+
+  description                  = "Allow ALB traffic to application workloads"
+  from_port                    = var.app_port
+  to_port                      = var.app_port
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.app.id
+}
+
+And this:
+
+resource "aws_vpc_security_group_egress_rule" "app_to_db" {
+  security_group_id = aws_security_group.app.id
+
+
+  description                  = "Allow application traffic to PostgreSQL"
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.db.id
+}
+
+becomes:
+
+resource "aws_vpc_security_group_egress_rule" "app_to_db" {
+  security_group_id = aws_security_group.app.id
+
+
+  description                  = "Allow application traffic to PostgreSQL"
+  from_port                    = var.db_port
+  to_port                      = var.db_port
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.db.id
+}
+
+So your final security rules should be
+
+# ============================================================
+# ALB Egress → Application
+# ============================================================
+
+resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
+  security_group_id = aws_security_group.alb.id
+
+  description                  = "Allow ALB traffic to application workloads"
+  from_port                    = var.app_port
+  to_port                      = var.app_port
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.app.id
+}
+
+
+# ============================================================
+# Application Ingress ← ALB
+# ============================================================
+
+resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
+  security_group_id = aws_security_group.app.id
+
+  description                  = "Application traffic from ALB"
+  from_port                    = var.app_port
+  to_port                      = var.app_port
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.alb.id
+}
+
+
+# ============================================================
+# Application Egress → Database
+# ============================================================
+
+resource "aws_vpc_security_group_egress_rule" "app_to_db" {
+  security_group_id = aws_security_group.app.id
+
+  description                  = "Allow application traffic to PostgreSQL"
+  from_port                    = var.db_port
+  to_port                      = var.db_port
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.db.id
+}
+
+
+# ============================================================
+# Database Ingress ← Application
+# ============================================================
+
+resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+  security_group_id = aws_security_group.db.id
+
+  description                  = "PostgreSQL from application workloads"
+  from_port                    = var.db_port
+  to_port                      = var.db_port
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.app.id
+}
+
+3. Compute module
+
+
+Change environments/dev/main.tf
+
+Change only these lines:
+
+instance_type = "t3.micro"
+
+
+min_size     = 2
+desired_size = 2
+max_size     = 4
+
+to:
+
+instance_type = var.instance_type
+
+
+min_size     = var.min_size
+desired_size = var.desired_size
+max_size     = var.max_size
+
+So the module becomes:
+
+module "compute" {
+  source = "../../modules/compute"
+
+
+  name = "${var.project_name}-${var.environment}"
+
+
+  vpc_id = module.networking.vpc_id
+
+
+  private_app_subnet_ids = module.networking.private_app_subnet_ids
+
+
+  security_group_id = module.security.app_security_group_id
+
+
+  target_group_arn = module.alb.target_group_arn
+
+
+  instance_profile_name = module.iam.ec2_instance_profile_name
+
+
+  instance_type = var.instance_type
+
+
+  min_size     = var.min_size
+  desired_size = var.desired_size
+  max_size     = var.max_size
+
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+Add the variables to environments/dev/variables.tf
+
+variable "instance_type" {
+  description = "EC2 instance type for the application."
+  type        = string
+  default     = "t3.micro"
+}
+
+
+variable "min_size" {
+  description = "Minimum number of application instances."
+  type        = number
+  default     = 2
+}
+
+
+variable "desired_size" {
+  description = "Desired number of application instances."
+  type        = number
+  default     = 2
+}
+
+
+variable "max_size" {
+  description = "Maximum number of application instances."
+  type        = number
+  default     = 4
+}
+
+Do not change modules/compute/main.tf just for this step if it already has variables for these values. The module should already be consuming things such as var.instance_type, var.min_size, etc.
+
+
+4. Database module
+
+Change environments/dev/main.tf
+
+Change these:
+
+instance_class = "db.t3.micro"
+
+
+allocated_storage = 20
+
+
+backup_retention_period = 7
+
+
+multi_az = false
+
+
+deletion_protection = false
+
+to:
+
+instance_class = var.db_instance_class
+
+
+allocated_storage = var.db_allocated_storage
+
+
+backup_retention_period = var.db_backup_retention_period
+
+
+multi_az = var.db_multi_az
+
+
+deletion_protection = var.db_deletion_protection
+
+The resulting module:
+
+module "database" {
+  source = "../../modules/database"
+
+  name = "${var.project_name}-${var.environment}"
+
+  subnet_ids = module.networking.private_db_subnet_ids
+
+  security_group_id = module.security.db_security_group_id
+
+  engine         = "postgres"
+  engine_version = "16"
+
+  instance_class = var.db_instance_class
+
+  database_name = "platform"
+
+  master_username = "platformadmin"
+
+  allocated_storage = var.db_allocated_storage
+
+  backup_retention_period = var.db_backup_retention_period
+
+  multi_az = var.db_multi_az
+
+  deletion_protection = var.db_deletion_protection
+
+  tags = {
+    Environment = var.environment
+  }
+}
+
+5. Add the Database variables
+
+In:
+
+terraform-aws-platform/environments/dev/variables.tf
+
+add:
+
+variable "db_instance_class" {
+  description = "RDS instance class."
+  type        = string
+  default     = "db.t3.micro"
+}
+
+
+variable "db_allocated_storage" {
+  description = "Allocated RDS storage in GB."
+  type        = number
+  default     = 20
+}
+
+
+variable "db_backup_retention_period" {
+  description = "RDS backup retention period in days."
+  type        = number
+  default     = 7
+}
+
+
+variable "db_multi_az" {
+  description = "Whether RDS should use Multi-AZ."
+  type        = bool
+  default     = false
+}
+
+
+variable "db_deletion_protection" {
+  description = "Whether RDS deletion protection is enabled."
+  type        = bool
+  default     = false
+}
+
+Again, the actual dev settings do not change:
+
+EC2              t3.micro
+min              2
+desired          2
+max              4
+
+RDS              db.t3.micro
+storage          20 GB
+backup           7 days
+Multi-AZ         false
+deletion protect false
+
+We're simply moving those values into environment variables.
+
+6. Don't change backend.tf
+
+Your current:
+
+backend "s3" {
+  bucket = "terraform-aws-platform-tfstate-051305442317"
+  key    = "environments/dev/terraform.tfstate"
+  region = "ap-southeast-1"
+
+
+  use_lockfile = true
+}
+
+is actually doing something important for Phase 9.
+
+The key:
+
+environments/dev/terraform.tfstate
+
+isolates the dev state.
+
+Later we'll make stage:
+
+environments/stage/terraform.tfstate
+
+and prod:
+
+environments/prod/terraform.tfstate
+
+So leave the dev backend alone for now.
+
+7. Then test — don't apply
+
+From:
+
+cd terraform-aws-platform/environments/dev
+
+run:
+
+terraform fmt -recursive ../../
+
+Then:
+
+terraform validate
+
+Then:
+
+terraform plan
+
+What we want
+
+Ideally:
+
+Plan: 56 to add, 0 to change, 0 to destroy.
+
+because we're only refactoring where the values come from.
+
+Do not run terraform apply for this change.
+
+Then run Trivy from the Terraform project root:
+
+cd ../..
+trivy config . --severity HIGH,CRITICAL
+
+We want:

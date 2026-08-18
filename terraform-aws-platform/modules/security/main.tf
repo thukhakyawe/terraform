@@ -91,8 +91,8 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
   security_group_id = aws_security_group.alb.id
 
   description                  = "Allow ALB traffic to application workloads"
-  from_port                    = 8080
-  to_port                      = 8080
+  from_port                    = var.app_port
+  to_port                      = var.app_port
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.app.id
 }
@@ -121,8 +121,8 @@ resource "aws_vpc_security_group_egress_rule" "app_to_db" {
   security_group_id = aws_security_group.app.id
 
   description                  = "Allow application traffic to PostgreSQL"
-  from_port                    = 5432
-  to_port                      = 5432
+  from_port                    = var.db_port
+  to_port                      = var.db_port
   ip_protocol                  = "tcp"
   referenced_security_group_id = aws_security_group.db.id
 }

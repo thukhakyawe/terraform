@@ -87,11 +87,13 @@ module "compute" {
 
   instance_profile_name = module.iam.ec2_instance_profile_name
 
-  instance_type = "t3.micro"
 
-  min_size     = 2
-  desired_size = 2
-  max_size     = 4
+
+  instance_type = var.instance_type
+
+  min_size     = var.min_size
+  desired_size = var.desired_size
+  max_size     = var.max_size
 
   tags = {
     Environment = var.environment
@@ -111,19 +113,19 @@ module "database" {
   engine         = "postgres"
   engine_version = "16"
 
-  instance_class = "db.t3.micro"
+  instance_class = var.db_instance_class
 
   database_name = "platform"
 
   master_username = "platformadmin"
 
-  allocated_storage = 20
+  allocated_storage = var.db_allocated_storage
 
-  backup_retention_period = 7
+  backup_retention_period = var.db_backup_retention_period
 
-  multi_az = false
+  multi_az = var.db_multi_az
 
-  deletion_protection = false
+  deletion_protection = var.db_deletion_protection
 
   tags = {
     Environment = var.environment
