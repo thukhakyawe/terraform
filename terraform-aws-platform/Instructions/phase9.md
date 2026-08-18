@@ -104,7 +104,7 @@ This is an important enterprise practice because GitHub Actions doesn't need a p
 
 9.3 First create the workflow directory
 
-From your repository root:
+From the root of your terraform repository, run:
 
 mkdir -p .github/workflows
 
@@ -114,72 +114,93 @@ tree .github
 
 You should see:
 
-.github
-└── workflows
+Your structure should become:
+
+terraform/
+├── .github/
+│   └── workflows/
+│
+├── Learn Terraform In 30 Days by StackOps/
+│
+├── terraform-aws-platform/
+│   ├── environments/
+│   └── modules/
+│
+└── README.md
+
 9.4 Create Terraform CI workflow
 
 Create:
 
-.github/workflows/terraform-ci.yml
+.github/workflows/terraform-validate.yml
 
 Put this in it:
 
-name: Terraform CI
-
+name: Terraform Validation
 
 on:
-  pull_request:
-    paths:
-      - "environments/**"
-      - "modules/**"
-      - ".github/workflows/**"
-
-
   push:
     branches:
       - main
     paths:
-      - "environments/**"
-      - "modules/**"
-      - ".github/workflows/**"
+      - "terraform-aws-platform/**"
+      - ".github/workflows/terraform-validate.yml"
 
+  pull_request:
+    paths:
+      - "terraform-aws-platform/**"
+      - ".github/workflows/terraform-validate.yml"
 
 permissions:
   contents: read
 
-
 jobs:
   terraform:
-    name: Terraform Validation
+    name: Terraform Validate
     runs-on: ubuntu-latest
-
 
     defaults:
       run:
-        working-directory: environments/dev
-
+        working-directory: terraform-aws-platform/environments/dev
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
-
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.10.0"
-
 
       - name: Terraform Format Check
-        run: terraform fmt -check -recursive ../..
-
+        run: terraform fmt -check -recursive ../../
 
       - name: Terraform Init
-        run: terraform init -input=false
-
+        run: terraform init -backend=false
 
       - name: Terraform Validate
         run: terraform validate
+
+Why working-directory matters
+
+This is important in your particular repository.
+
+Your Terraform root is not:
+
+terraform/
+
+It is:
+
+terraform/terraform-aws-platform/
+
+and your environment is:
+
+terraform-aws-platform/environments/dev/
+
+Therefore GitHub Actions needs to execute Terraform from:
+
+working-directory: terraform-aws-platform/environments/dev
+
+Otherwise the workflow won't find your Terraform configuration correctly.
+
 9.5 Understand each stage
 Checkout
 uses: actions/checkout@v4
@@ -241,83 +262,68 @@ First let's add the static Terraform security checks.
 
 We'll use Trivy to scan the Terraform configuration for security problems.
 
-Add this step after Terraform validation:
-
       - name: Terraform Security Scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: config
-          scan-ref: .
+          scan-ref: ./terraform-aws-platform
           severity: HIGH,CRITICAL
           exit-code: "1"
 
 Your workflow becomes:
 
-name: Terraform CI
-
+name: Terraform Validation
 
 on:
-  pull_request:
-    paths:
-      - "environments/**"
-      - "modules/**"
-      - ".github/workflows/**"
-
-
   push:
     branches:
       - main
     paths:
-      - "environments/**"
-      - "modules/**"
-      - ".github/workflows/**"
+      - "terraform-aws-platform/**"
+      - ".github/workflows/terraform-validate.yml"
 
+  pull_request:
+    paths:
+      - "terraform-aws-platform/**"
+      - ".github/workflows/terraform-validate.yml"
 
 permissions:
   contents: read
-
 
 jobs:
   terraform:
     name: Terraform Validation
     runs-on: ubuntu-latest
 
-
     defaults:
       run:
-        working-directory: environments/dev
-
+        working-directory: terraform-aws-platform/environments/dev
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
-
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.10.0"
-
 
       - name: Terraform Format Check
-        run: terraform fmt -check -recursive ../..
-
+        run: terraform fmt -check -recursive ../../
 
       - name: Terraform Init
-        run: terraform init -input=false
-
+        run: terraform init -backend=false
 
       - name: Terraform Validate
         run: terraform validate
-
 
       - name: Terraform Security Scan
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: config
-          scan-ref: .
+          scan-ref: ./terraform-aws-platform
           severity: HIGH,CRITICAL
           exit-code: "1"
+
+
 9.8 Why this is valuable
 
 Now imagine someone changes:
