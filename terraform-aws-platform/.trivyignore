@@ -1,2 +1,6 @@
+# Intentional development-environment exceptions.
+# AWS-0053: Public ALB is required as the application entry point.
+# AWS-0054: HTTP is temporarily used because no domain/ACM certificate
+# is configured yet. Production deployment will use HTTPS.
 AWS-0053
 AWS-0054
