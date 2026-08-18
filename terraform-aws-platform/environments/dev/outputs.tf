@@ -87,3 +87,24 @@ output "application_ami_id" {
   description = "Amazon Linux AMI used by the application."
   value       = module.compute.ami_id
 }
+
+# Add database outputs
+output "db_endpoint" {
+  description = "RDS PostgreSQL endpoint."
+  value       = module.database.db_endpoint
+}
+
+output "db_port" {
+  description = "RDS PostgreSQL port."
+  value       = module.database.db_port
+}
+
+output "db_name" {
+  description = "Application database name."
+  value       = module.database.db_name
+}
+
+output "db_secret_arn" {
+  description = "ARN of the database credentials secret."
+  value       = module.database.secret_arn
+}

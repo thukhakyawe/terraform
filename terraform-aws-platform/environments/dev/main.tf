@@ -97,3 +97,35 @@ module "compute" {
     Environment = var.environment
   }
 }
+
+# Connect database to dev
+module "database" {
+  source = "../../modules/database"
+
+  name = "${var.project_name}-${var.environment}"
+
+  subnet_ids = module.networking.private_db_subnet_ids
+
+  security_group_id = module.security.db_security_group_id
+
+  engine         = "postgres"
+  engine_version = "16"
+
+  instance_class = "db.t3.micro"
+
+  database_name = "platform"
+
+  master_username = "platformadmin"
+
+  allocated_storage = 20
+
+  backup_retention_period = 7
+
+  multi_az = false
+
+  deletion_protection = false
+
+  tags = {
+    Environment = var.environment
+  }
+}
