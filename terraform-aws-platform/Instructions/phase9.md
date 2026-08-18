@@ -1109,4 +1109,41 @@ from ports 80/443.
 That's ingress, not egress, and your ALB is intentionally internet-facing. Trivy has separately reported that the ALB is public as a HIGH finding, but that is an architectural choice we will address separately.
 
 
+Open:
+
+modules/monitoring/main.tf
+
+At the top, add:
+
+resource "aws_kms_key" "monitoring" {
+  description             = "KMS key for monitoring and alerting resources"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.name}-monitoring-kms"
+    }
+  )
+}
+
+Then your existing:
+
+kms_master_key_id = aws_kms_key.monitoring.arn
+
+will have a valid resource to reference.
+
+Also add a KMS alias
+
+This isn't strictly required for validation, but I recommend it for a clean enterprise project:
+
+resource "aws_kms_alias" "monitoring" {
+  name          = "alias/${var.name}-monitoring"
+  target_key_id = aws_kms_key.monitoring.key_id
+}
+
+
+
 Then we'll continue with Phase 9B: AWS IAM + GitHub OIDC, where we'll configure secure passwordless authentication between GitHub Actions and AWS.

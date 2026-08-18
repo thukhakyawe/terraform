@@ -1,3 +1,21 @@
+resource "aws_kms_key" "monitoring" {
+  description             = "KMS key for monitoring and alerting resources"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.name}-monitoring-kms"
+    }
+  )
+}
+
+resource "aws_kms_alias" "monitoring" {
+  name          = "alias/${var.name}-monitoring"
+  target_key_id = aws_kms_key.monitoring.key_id
+}
+
 # Create the SNS topic
 resource "aws_sns_topic" "alerts" {
   name = "${var.name}-alerts"
