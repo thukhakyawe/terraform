@@ -70,3 +70,30 @@ module "alb" {
     Environment = var.environment
   }
 }
+
+# Connect Compute to the dev environment
+module "compute" {
+  source = "../../modules/compute"
+
+  name = "${var.project_name}-${var.environment}"
+
+  vpc_id = module.networking.vpc_id
+
+  private_app_subnet_ids = module.networking.private_app_subnet_ids
+
+  security_group_id = module.security.app_security_group_id
+
+  target_group_arn = module.alb.target_group_arn
+
+  instance_profile_name = module.iam.ec2_instance_profile_name
+
+  instance_type = "t3.micro"
+
+  min_size     = 2
+  desired_size = 2
+  max_size     = 4
+
+  tags = {
+    Environment = var.environment
+  }
+}

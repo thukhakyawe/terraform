@@ -71,3 +71,19 @@ output "target_group_arn" {
   description = "ARN of the application target group."
   value       = module.alb.target_group_arn
 }
+
+# Add compute outputs
+output "autoscaling_group_name" {
+  description = "Application Auto Scaling Group name."
+  value       = module.compute.autoscaling_group_name
+}
+
+output "launch_template_id" {
+  description = "Application Launch Template ID."
+  value       = module.compute.launch_template_id
+}
+
+output "application_ami_id" {
+  description = "Amazon Linux AMI used by the application."
+  value       = module.compute.ami_id
+}
