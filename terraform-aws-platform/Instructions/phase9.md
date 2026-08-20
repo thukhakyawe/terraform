@@ -1830,5 +1830,10 @@ Then run Trivy from the Terraform project root:
 
 cd ../..
 trivy config . --severity HIGH,CRITICAL
+git add .
+git commit -m "Add Terraform CI security validation"
+git push
 
-We want:
+After pushing, check the Terraform Validation GitHub Actions workflow.
+
+Do not run terraform apply yet. First let's get Phase 9B CI completely green.

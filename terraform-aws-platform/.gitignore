@@ -40,3 +40,7 @@ venv/
 # Temporary files
 *.tmp
 *.temp
+
+# Terraform files
+*.tfplan
+tfplan
