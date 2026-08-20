@@ -132,6 +132,14 @@ git diff --cached
 Do not commit yet if you see credentials, state files, tfplan, or .terraform directories.
 
 If everything looks correct:
+git status
+
+If these are tracked, remove them from the commit and add them to .gitignore:
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
 
 git commit -m "Complete Terraform platform CI validation"
 

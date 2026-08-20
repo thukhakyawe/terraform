@@ -42,5 +42,8 @@ venv/
 *.temp
 
 # Terraform files
+.terraform/
+*.tfstate
+*.tfstate.*
 *.tfplan
 tfplan
