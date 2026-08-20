@@ -141,7 +141,7 @@ If these are tracked, remove them from the commit and add them to .gitignore:
 *.tfplan
 tfplan
 
-git commit -m "Complete Terraform platform CI validation"
+git commit -m "Complete Terraform AWS platform project"
 
 Then push:
 
